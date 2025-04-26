@@ -3,6 +3,7 @@ import requests
 import base64
 import json
 import time
+import threading
 from email import message_from_bytes
 from io import BytesIO
 from requests_toolbelt.multipart.encoder import MultipartEncoder
@@ -167,6 +168,14 @@ def run():
     main()
     return "✅ Script ausgeführt", 200
 
+def background_task():
+    while True:
+        print("⏳ Automatischer Lauf gestartet...")
+        main()
+        print("✅ Automatischer Lauf beendet. Warte 60 Minuten...")
+        time.sleep(3600)
+
 if __name__ == "__main__":
+    threading.Thread(target=background_task, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)

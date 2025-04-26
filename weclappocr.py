@@ -3,7 +3,6 @@ import requests
 import base64
 import json
 import time
-import threading
 from email import message_from_bytes
 from io import BytesIO
 from requests_toolbelt.multipart.encoder import MultipartEncoder
@@ -26,11 +25,9 @@ FOLDER_NAME = os.getenv('FOLDER_NAME')
 GRAPH_API_ENDPOINT = 'https://graph.microsoft.com/v1.0'
 TOKEN_ENDPOINT = f'https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token'
 
-# Token abrufen (Client Credentials Flow) mit Retry
 print("✅ Weclapp OCR Importer Script startet...")
 
 def authenticate_graph():
-  
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
@@ -52,7 +49,6 @@ def authenticate_graph():
             else:
                 raise Exception(f"Verbindung zu Microsoft fehlgeschlagen nach {max_retries} Versuchen: {e}")
 
-# E-Mails auslesen mit Retry
 def fetch_emails(access_token):
     max_retries = 3
     for attempt in range(1, max_retries + 1):
@@ -78,7 +74,6 @@ def fetch_emails(access_token):
             else:
                 raise Exception(f"E-Mails konnten nach {max_retries} Versuchen nicht abgerufen werden: {e}")
 
-# E-Mail archivieren
 def archive_email(access_token, message_id):
     headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
     response = requests.get(f"{GRAPH_API_ENDPOINT}/users/{USER_EMAIL}/mailFolders", headers=headers, timeout=10)
@@ -94,7 +89,6 @@ def archive_email(access_token, message_id):
     response.raise_for_status()
     print(f"📥 E-Mail {message_id} archiviert.", flush=True)
 
-# PDF Anhänge sammeln aus allen E-Mails und gemeinsam hochladen
 def process_attachments(access_token, messages):
     headers = {'Authorization': f'Bearer {access_token}'}
     pdf_attachments = {}
@@ -125,7 +119,6 @@ def process_attachments(access_token, messages):
     else:
         print("ℹ️ Keine PDF-Anhänge gefunden.", flush=True)
 
-# Upload mehrere PDFs zur weclapp OCR (mit MultipartEncoder) mit Retry
 def upload_multiple_to_weclapp(pdf_attachments):
     url = f"https://{WECLAPP_TENANT}.weclapp.com/webapp/api/v1/purchaseInvoice/startInvoiceDocumentProcessing/multipartUpload"
     print(f"➡️ Upload zu Endpoint: {url}", flush=True)
@@ -146,14 +139,12 @@ def upload_multiple_to_weclapp(pdf_attachments):
             break
         except requests.exceptions.RequestException as e:
             print(f"❌ Fehler beim Upload (Versuch {attempt}): {e}", flush=True)
+            if attempt < max_retries:
+                print("🔄 Neuer Versuch...", flush=True)
+                time.sleep(5)
+            else:
+                print("❌ Alle Upload-Versuche fehlgeschlagen.", flush=True)
 
-        if attempt < max_retries:
-            print("🔄 Neuer Versuch...", flush=True)
-            time.sleep(5)
-        else:
-            print("❌ Alle Upload-Versuche fehlgeschlagen.", flush=True)
-
-# Hauptablauf
 def main():
     try:
         access_token = authenticate_graph()
@@ -176,16 +167,6 @@ def run():
     main()
     return "✅ Script manuell ausgeführt", 200
 
-def background_task():
-    while True:
-        print("⏳ Automatischer Lauf gestartet...", flush=True)
-        main()
-        print("✅ OCR Import beendet.", flush=True)
-        for remaining in range(60, 0, -1):
-            print(f"⏳ Nächste Ausführung in {remaining} Minuten...", flush=True)
-            time.sleep(60)
-
 if __name__ == "__main__":
-    threading.Thread(target=background_task, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)

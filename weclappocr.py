@@ -106,6 +106,7 @@ def process_attachments(access_token, messages):
             if attachment['@odata.type'] == '#microsoft.graph.fileAttachment' and attachment['contentType'].lower() == 'application/pdf':
                 pdf_bytes = base64.b64decode(attachment['contentBytes'])
                 pdf_attachments[f'file{attachment_counter}'] = (attachment['name'], BytesIO(pdf_bytes), 'application/pdf')
+                print(f"📄 Gefundene PDF: {attachment['name']}")
                 attachment_counter += 1
                 has_pdf = True
 
@@ -172,8 +173,10 @@ def background_task():
     while True:
         print("⏳ Automatischer Lauf gestartet...")
         main()
-        print("✅ Automatischer Lauf beendet. Warte 60 Minuten...")
-        time.sleep(3600)
+        print("✅ Automatischer Lauf beendet. Starte 60 Minuten Countdown...")
+        for remaining in range(60, 0, -1):
+            print(f"⏳ Nächste Ausführung in {remaining} Minuten...")
+            time.sleep(60)
 
 if __name__ == "__main__":
     threading.Thread(target=background_task, daemon=True).start()

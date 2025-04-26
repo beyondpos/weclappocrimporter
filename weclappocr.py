@@ -158,6 +158,10 @@ def main():
     except Exception as e:
         print(f"❗ Fehler im Hauptablauf: {e}")
 
+@app.route('/', methods=['GET'])
+def index():
+    return "✅ OCR Importer Service läuft! Nutze /run zum Ausführen.", 200
+
 @app.route('/run', methods=['GET'])
 def run():
     main()

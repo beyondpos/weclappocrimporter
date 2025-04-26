@@ -39,11 +39,12 @@ def authenticate_graph():
             }
             response = requests.post(TOKEN_ENDPOINT, data=data, timeout=10)
             response.raise_for_status()
+            print("✅ Token erfolgreich abgerufen.", flush=True)
             return response.json()['access_token']
         except requests.exceptions.RequestException as e:
-            print(f"❌ Fehler beim Authentifizieren (Versuch {attempt}): {e}")
+            print(f"❌ Fehler beim Authentifizieren (Versuch {attempt}): {e}", flush=True)
             if attempt < max_retries:
-                print("🔄 Neuer Versuch...")
+                print("🔄 Neuer Versuch...", flush=True)
                 time.sleep(5)
             else:
                 raise Exception(f"Verbindung zu Microsoft fehlgeschlagen nach {max_retries} Versuchen: {e}")
@@ -64,11 +65,12 @@ def fetch_emails(access_token):
             response = requests.get(f'{GRAPH_API_ENDPOINT}/users/{USER_EMAIL}/mailFolders/{folder_id}/messages', headers=headers, timeout=10)
             response.raise_for_status()
             messages = response.json()
+            print(f"✅ {len(messages['value'])} E-Mails abgerufen.", flush=True)
             return messages['value']
         except requests.exceptions.RequestException as e:
-            print(f"❌ Fehler beim Abrufen der E-Mails (Versuch {attempt}): {e}")
+            print(f"❌ Fehler beim Abrufen der E-Mails (Versuch {attempt}): {e}", flush=True)
             if attempt < max_retries:
-                print("🔄 Neuer Versuch...")
+                print("🔄 Neuer Versuch...", flush=True)
                 time.sleep(5)
             else:
                 raise Exception(f"E-Mails konnten nach {max_retries} Versuchen nicht abgerufen werden: {e}")
@@ -87,7 +89,7 @@ def archive_email(access_token, message_id):
     data = {"destinationId": archive_folder_id}
     response = requests.post(move_url, headers=headers, json=data, timeout=10)
     response.raise_for_status()
-    print(f"📥 E-Mail {message_id} archiviert.")
+    print(f"📥 E-Mail {message_id} archiviert.", flush=True)
 
 # PDF Anhänge sammeln aus allen E-Mails und gemeinsam hochladen
 def process_attachments(access_token, messages):
@@ -106,7 +108,7 @@ def process_attachments(access_token, messages):
             if attachment['@odata.type'] == '#microsoft.graph.fileAttachment' and attachment['contentType'].lower() == 'application/pdf':
                 pdf_bytes = base64.b64decode(attachment['contentBytes'])
                 pdf_attachments[f'file{attachment_counter}'] = (attachment['name'], BytesIO(pdf_bytes), 'application/pdf')
-                print(f"📄 Gefundene PDF: {attachment['name']}")
+                print(f"📄 Gefundene PDF: {attachment['name']}", flush=True)
                 attachment_counter += 1
                 has_pdf = True
 
@@ -118,12 +120,12 @@ def process_attachments(access_token, messages):
         for message_id in message_ids_to_archive:
             archive_email(access_token, message_id)
     else:
-        print("ℹ️ Keine PDF-Anhänge gefunden.")
+        print("ℹ️ Keine PDF-Anhänge gefunden.", flush=True)
 
 # Upload mehrere PDFs zur weclapp OCR (mit MultipartEncoder) mit Retry
 def upload_multiple_to_weclapp(pdf_attachments):
     url = f"https://{WECLAPP_TENANT}.weclapp.com/webapp/api/v1/purchaseInvoice/startInvoiceDocumentProcessing/multipartUpload"
-    print(f"➡️ Upload zu Endpoint: {url}")
+    print(f"➡️ Upload zu Endpoint: {url}", flush=True)
     m = MultipartEncoder(fields=pdf_attachments)
     headers = {
         'AuthenticationToken': WECLAPP_API_KEY,
@@ -137,16 +139,16 @@ def upload_multiple_to_weclapp(pdf_attachments):
             response = requests.post(url, headers=headers, data=m, timeout=60)
             response.raise_for_status()
             uploaded_files = ', '.join(name for name, _, _ in pdf_attachments.values())
-            print(f"✅ Upload erfolgreich: {uploaded_files}")
+            print(f"✅ Upload erfolgreich: {uploaded_files}", flush=True)
             break
         except requests.exceptions.RequestException as e:
-            print(f"❌ Fehler beim Upload (Versuch {attempt}): {e}")
+            print(f"❌ Fehler beim Upload (Versuch {attempt}): {e}", flush=True)
 
         if attempt < max_retries:
-            print("🔄 Neuer Versuch...")
+            print("🔄 Neuer Versuch...", flush=True)
             time.sleep(5)
         else:
-            print("❌ Alle Upload-Versuche fehlgeschlagen.")
+            print("❌ Alle Upload-Versuche fehlgeschlagen.", flush=True)
 
 # Hauptablauf
 def main():
@@ -156,26 +158,28 @@ def main():
         if messages:
             process_attachments(access_token, messages)
         else:
-            print("Keine neuen E-Mails im Ordner gefunden.")
+            print("ℹ️ Keine neuen E-Mails im Ordner gefunden.", flush=True)
     except Exception as e:
-        print(f"❗ Fehler im Hauptablauf: {e}")
+        print(f"❗ Fehler im Hauptablauf: {e}", flush=True)
 
 @app.route('/', methods=['GET'])
 def index():
+    print("✅ OCR Importer Service läuft! Nutze /run zum Ausführen.", flush=True)
     return "✅ OCR Importer Service läuft! Nutze /run zum Ausführen.", 200
 
 @app.route('/run', methods=['GET'])
 def run():
+    print("▶️ Manueller Start über /run", flush=True)
     main()
     return "✅ Script ausgeführt", 200
 
 def background_task():
     while True:
-        print("⏳ Automatischer Lauf gestartet...")
+        print("⏳ Automatischer Lauf gestartet...", flush=True)
         main()
-        print("✅ Automatischer Lauf beendet. Starte 60 Minuten Countdown...")
+        print("✅ Automatischer Lauf beendet. Starte 60 Minuten Countdown...", flush=True)
         for remaining in range(60, 0, -1):
-            print(f"⏳ Nächste Ausführung in {remaining} Minuten...")
+            print(f"⏳ Nächste Ausführung in {remaining} Minuten...", flush=True)
             time.sleep(60)
 
 if __name__ == "__main__":

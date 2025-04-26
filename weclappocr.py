@@ -27,7 +27,10 @@ GRAPH_API_ENDPOINT = 'https://graph.microsoft.com/v1.0'
 TOKEN_ENDPOINT = f'https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token'
 
 # Token abrufen (Client Credentials Flow) mit Retry
+print("✅ Weclapp OCR Importer Script startet...")
+
 def authenticate_graph():
+  
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
@@ -158,26 +161,26 @@ def main():
         if messages:
             process_attachments(access_token, messages)
         else:
-            print("ℹ️ Keine neuen E-Mails im Ordner gefunden.", flush=True)
+            print("ℹ️ Keine PDFs zum importieren gefunden.", flush=True)
     except Exception as e:
         print(f"❗ Fehler im Hauptablauf: {e}", flush=True)
 
 @app.route('/', methods=['GET'])
 def index():
-    print("✅ OCR Importer Service läuft! Nutze /run zum Ausführen.", flush=True)
-    return "✅ OCR Importer Service läuft! Nutze /run zum Ausführen.", 200
+    print("ℹ️ Nutze /run um das Skript manuell auszführen.", flush=True)
+    return "ℹ️ Nutze /run um das Skript manuell auszführen.", 200
 
 @app.route('/run', methods=['GET'])
 def run():
     print("▶️ Manueller Start über /run", flush=True)
     main()
-    return "✅ Script ausgeführt", 200
+    return "✅ Script manuell ausgeführt", 200
 
 def background_task():
     while True:
         print("⏳ Automatischer Lauf gestartet...", flush=True)
         main()
-        print("✅ Automatischer Lauf beendet. Starte 60 Minuten Countdown...", flush=True)
+        print("✅ OCR Import beendet.", flush=True)
         for remaining in range(60, 0, -1):
             print(f"⏳ Nächste Ausführung in {remaining} Minuten...", flush=True)
             time.sleep(60)

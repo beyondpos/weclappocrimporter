@@ -7,9 +7,12 @@ from email import message_from_bytes
 from io import BytesIO
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 from dotenv import load_dotenv
+from flask import Flask
 
 # Umgebung laden
 load_dotenv()
+
+app = Flask(__name__)
 
 # Konfiguration
 CLIENT_ID = os.getenv('CLIENT_ID')
@@ -155,8 +158,11 @@ def main():
     except Exception as e:
         print(f"❗ Fehler im Hauptablauf: {e}")
 
+@app.route('/run', methods=['GET'])
+def run():
+    main()
+    return "✅ Script ausgeführt", 200
+
 if __name__ == "__main__":
-    while True:
-        main()
-        print("⏳ Warten auf nächsten Durchlauf...")
-        time.sleep(300)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

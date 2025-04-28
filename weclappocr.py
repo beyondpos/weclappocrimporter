@@ -24,37 +24,35 @@ FOLDER_NAME = os.getenv('FOLDER_NAME')
 GRAPH_API_ENDPOINT = 'https://graph.microsoft.com/v1.0'
 TOKEN_ENDPOINT = f'https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token'
 
-print("✅ Weclapp OCR Importer Script startet...")
 
-
-def request_with_retries(method, url, headers=None, data=None, json_data=None, retries=3, timeout=10):
+def request_with_retries(method, url, headers=None, data=None, json_data=None, retries=3, timeout=10, log_entries=None):
     for attempt in range(1, retries + 1):
         try:
             response = requests.request(method, url, headers=headers, data=data, json=json_data, timeout=timeout)
             response.raise_for_status()
             return response
         except requests.RequestException as e:
-            print(f"❌ Fehler bei {url} (Versuch {attempt}): {e}", flush=True)
+            if log_entries is not None:
+                log_entries.append(f"❗ Fehler bei Request {method} {url} (Versuch {attempt}): {e}")
             if attempt == retries:
                 raise
             time.sleep(5)
 
 
-def authenticate_graph():
+def authenticate_graph(log_entries):
     data = {
         'client_id': CLIENT_ID,
         'scope': 'https://graph.microsoft.com/.default',
         'client_secret': CLIENT_SECRET,
         'grant_type': 'client_credentials'
     }
-    response = request_with_retries("POST", TOKEN_ENDPOINT, data=data)
-    print("✅ Token erfolgreich abgerufen.", flush=True)
+    response = request_with_retries("POST", TOKEN_ENDPOINT, data=data, log_entries=log_entries)
     return response.json()['access_token']
 
 
-def get_folder_id(access_token, folder_name):
+def get_folder_id(access_token, folder_name, log_entries):
     headers = {'Authorization': f'Bearer {access_token}'}
-    response = request_with_retries("GET", f'{GRAPH_API_ENDPOINT}/users/{USER_EMAIL}/mailFolders', headers=headers)
+    response = request_with_retries("GET", f'{GRAPH_API_ENDPOINT}/users/{USER_EMAIL}/mailFolders', headers=headers, log_entries=log_entries)
     folders = response.json().get('value', [])
     folder_id = next((f['id'] for f in folders if f['displayName'] == folder_name), None)
     if not folder_id:
@@ -62,47 +60,45 @@ def get_folder_id(access_token, folder_name):
     return folder_id
 
 
-def fetch_emails(access_token, folder_id):
+def fetch_emails(access_token, folder_id, log_entries):
     headers = {'Authorization': f'Bearer {access_token}'}
-    response = request_with_retries("GET", f'{GRAPH_API_ENDPOINT}/users/{USER_EMAIL}/mailFolders/{folder_id}/messages', headers=headers)
+    response = request_with_retries("GET", f'{GRAPH_API_ENDPOINT}/users/{USER_EMAIL}/mailFolders/{folder_id}/messages', headers=headers, log_entries=log_entries)
     messages = response.json().get('value', [])
-    print(f"✅ {len(messages)} E-Mails abgerufen.", flush=True)
     return messages
 
 
-def archive_email(access_token, message_id, archive_folder_id):
+def archive_email(access_token, message_id, archive_folder_id, log_entries):
     headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
     move_url = f"{GRAPH_API_ENDPOINT}/users/{USER_EMAIL}/messages/{message_id}/move"
     data = {"destinationId": archive_folder_id}
-    request_with_retries("POST", move_url, headers=headers, json_data=data)
-    print(f"📥 E-Mail {message_id} archiviert.", flush=True)
+    request_with_retries("POST", move_url, headers=headers, json_data=data, log_entries=log_entries)
 
 
-def process_attachments(access_token, messages, archive_folder_id):
+def process_attachments(access_token, messages, archive_folder_id, log_entries):
     headers = {'Authorization': f'Bearer {access_token}'}
     pdf_attachments = {}
     message_ids_to_archive = []
 
     for msg in messages:
-        response = request_with_retries("GET", f"{GRAPH_API_ENDPOINT}/users/{USER_EMAIL}/messages/{msg['id']}/attachments", headers=headers)
+        response = request_with_retries("GET", f"{GRAPH_API_ENDPOINT}/users/{USER_EMAIL}/messages/{msg['id']}/attachments", headers=headers, log_entries=log_entries)
         attachments = response.json().get('value', [])
 
         for attachment in attachments:
             if attachment['@odata.type'] == '#microsoft.graph.fileAttachment' and attachment['contentType'].lower() == 'application/pdf':
                 pdf_bytes = base64.b64decode(attachment['contentBytes'])
                 pdf_attachments[str(uuid4())] = (attachment['name'], BytesIO(pdf_bytes), 'application/pdf')
-                print(f"📄 Gefundene PDF: {attachment['name']}", flush=True)
+                log_entries.append(f"📄 Gefundene PDF: {attachment['name']}")
                 message_ids_to_archive.append(msg['id'])
 
     if pdf_attachments:
-        upload_multiple_to_weclapp(pdf_attachments)
+        upload_multiple_to_weclapp(pdf_attachments, log_entries)
         for message_id in message_ids_to_archive:
-            archive_email(access_token, message_id, archive_folder_id)
-    else:
-        print("ℹ️ Keine PDF-Anhänge gefunden.", flush=True)
+            archive_email(access_token, message_id, archive_folder_id, log_entries)
+            log_entries.append(f"📥 E-Mail {message_id} archiviert.")
+    return bool(pdf_attachments)
 
 
-def upload_multiple_to_weclapp(pdf_attachments):
+def upload_multiple_to_weclapp(pdf_attachments, log_entries):
     url = f"https://{WECLAPP_TENANT}.weclapp.com/webapp/api/v1/purchaseInvoice/startInvoiceDocumentProcessing/multipartUpload"
     m = MultipartEncoder(fields=pdf_attachments)
     headers = {
@@ -110,23 +106,35 @@ def upload_multiple_to_weclapp(pdf_attachments):
         'Accept': 'application/json',
         'Content-Type': m.content_type
     }
-    request_with_retries("POST", url, headers=headers, data=m, timeout=60)
+    request_with_retries("POST", url, headers=headers, data=m, timeout=60, log_entries=log_entries)
     uploaded_files = ', '.join(name for name, _, _ in pdf_attachments.values())
-    print(f"✅ Upload erfolgreich: {uploaded_files}", flush=True)
+    log_entries.append(f"✅ Upload erfolgreich: {uploaded_files}")
 
 
 def main():
+    log_entries = []
     try:
-        access_token = authenticate_graph()
-        folder_id = get_folder_id(access_token, FOLDER_NAME)
-        archive_folder_id = get_folder_id(access_token, 'Archiv')
-        messages = fetch_emails(access_token, folder_id)
+        access_token = authenticate_graph(log_entries)
+        folder_id = get_folder_id(access_token, FOLDER_NAME, log_entries)
+        archive_folder_id = get_folder_id(access_token, 'Archiv', log_entries)
+        messages = fetch_emails(access_token, folder_id, log_entries)
         if messages:
-            process_attachments(access_token, messages, archive_folder_id)
+            found_pdfs = process_attachments(access_token, messages, archive_folder_id, log_entries)
+            if found_pdfs:
+                print("✅ Verarbeitungslog:")
+                for entry in log_entries:
+                    print(entry, flush=True)
+            else:
+                print("💊 Postfach durchsucht aber keine neuen Einkaufsrechnungen gefunden.", flush=True)
         else:
-            print("ℹ️ Keine PDFs zum Importieren gefunden.", flush=True)
+            print("💊 Postfach durchsucht aber keine neuen Einkaufsrechnungen gefunden.", flush=True)
     except Exception as e:
-        print(f"❗ Fehler im Hauptablauf: {e}", flush=True)
+        log_entries.append(f"❗ Fehler im Hauptablauf: {e}")
+        print("❗ Fehler im Hauptablauf: {e}", flush=True)
+        if log_entries:
+            print("📝 Fehlerprotokoll:")
+            for entry in log_entries:
+                print(entry, flush=True)
 
 
 @app.route('/', methods=['GET'])
@@ -136,7 +144,6 @@ def index():
 
 @app.route('/run', methods=['GET'])
 def run():
-    print("▶️ Manueller Start über /run", flush=True)
     main()
     return "✅ Script manuell ausgeführt", 200
 

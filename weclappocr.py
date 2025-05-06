@@ -86,8 +86,14 @@ def process_attachments(access_token, messages, archive_folder_id, log_entries):
         for attachment in attachments:
             if attachment['@odata.type'] == '#microsoft.graph.fileAttachment' and attachment['contentType'].lower() == 'application/pdf':
                 pdf_bytes = base64.b64decode(attachment['contentBytes'])
-                pdf_attachments[str(uuid4())] = (attachment['name'], BytesIO(pdf_bytes), 'application/pdf')
-                log_entries.append(f"📄 Gefundene PDF: {attachment['name']}")
+                
+                # Sicherstellen, dass die Endung .pdf vorhanden ist
+                filename = attachment['name']
+                if not filename.lower().endswith('.pdf'):
+                    filename += '.pdf'
+                
+                pdf_attachments[str(uuid4())] = (filename, BytesIO(pdf_bytes), 'application/pdf')
+                log_entries.append(f"📄 Gefundene PDF: {filename}")
                 message_ids_to_archive.append(msg['id'])
 
     if pdf_attachments:
@@ -130,7 +136,7 @@ def main():
             print("💊 Postfach durchsucht aber keine neuen Einkaufsrechnungen gefunden.", flush=True)
     except Exception as e:
         log_entries.append(f"❗ Fehler im Hauptablauf: {e}")
-        print("❗ Fehler im Hauptablauf: {e}", flush=True)
+        print(f"❗ Fehler im Hauptablauf: {e}", flush=True)
         if log_entries:
             print("📝 Fehlerprotokoll:")
             for entry in log_entries:

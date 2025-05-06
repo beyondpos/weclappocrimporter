@@ -105,11 +105,11 @@ def process_attachments(access_token, messages, archive_folder_id, log_entries):
 
 
 def upload_multiple_to_weclapp(pdf_attachments, log_entries):
-    # Verwende den Dateinamen als Feldname UND Dateiname
-    fields = [
-        (filename, (filename, fileobj, mimetype))
+    # Weclapp erkennt Dateinamen aus dem Multipart-Header – also Feldname = Dateiname
+    fields = {
+        filename: (filename, fileobj, mimetype)
         for _, (filename, fileobj, mimetype) in pdf_attachments.items()
-    ]
+    }
     m = MultipartEncoder(fields=fields)
     headers = {
         'AuthenticationToken': WECLAPP_API_KEY,
@@ -118,7 +118,7 @@ def upload_multiple_to_weclapp(pdf_attachments, log_entries):
     }
     url = f"https://{WECLAPP_TENANT}.weclapp.com/webapp/api/v1/purchaseInvoice/startInvoiceDocumentProcessing/multipartUpload"
     request_with_retries("POST", url, headers=headers, data=m, timeout=60, log_entries=log_entries)
-    uploaded_files = ', '.join(filename for filename, _, _ in pdf_attachments.values())
+    uploaded_files = ', '.join(fields.keys())
     log_entries.append(f"✅ Upload erfolgreich: {uploaded_files}")
 
 

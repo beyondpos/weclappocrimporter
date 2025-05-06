@@ -71,7 +71,10 @@ def archive_email(access_token, message_id, archive_folder_id, log_entries):
     headers = {'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'}
     move_url = f"{GRAPH_API_ENDPOINT}/users/{USER_EMAIL}/messages/{message_id}/move"
     data = {"destinationId": archive_folder_id}
-    request_with_retries("POST", move_url, headers=headers, json_data=data, log_entries=log_entries)
+    try:
+        request_with_retries("POST", move_url, headers=headers, json_data=data, log_entries=log_entries)
+    except Exception as e:
+        log_entries.append(f"❌ Fehler beim Verschieben der Nachricht {message_id}: {e}")
 
 
 def process_attachments(access_token, messages, archive_folder_id, log_entries):
@@ -86,12 +89,9 @@ def process_attachments(access_token, messages, archive_folder_id, log_entries):
         for attachment in attachments:
             if attachment['@odata.type'] == '#microsoft.graph.fileAttachment' and attachment['contentType'].lower() == 'application/pdf':
                 pdf_bytes = base64.b64decode(attachment['contentBytes'])
-                
-                # Sicherstellen, dass die Endung .pdf vorhanden ist
                 filename = attachment['name']
                 if not filename.lower().endswith('.pdf'):
                     filename += '.pdf'
-                
                 pdf_attachments[str(uuid4())] = (filename, BytesIO(pdf_bytes), 'application/pdf')
                 log_entries.append(f"📄 Gefundene PDF: {filename}")
                 message_ids_to_archive.append(msg['id'])
@@ -105,15 +105,20 @@ def process_attachments(access_token, messages, archive_folder_id, log_entries):
 
 
 def upload_multiple_to_weclapp(pdf_attachments, log_entries):
-    url = f"https://{WECLAPP_TENANT}.weclapp.com/webapp/api/v1/purchaseInvoice/startInvoiceDocumentProcessing/multipartUpload"
-    m = MultipartEncoder(fields=pdf_attachments)
+    # Verwende den Dateinamen als Feldname UND Dateiname
+    fields = [
+        (filename, (filename, fileobj, mimetype))
+        for _, (filename, fileobj, mimetype) in pdf_attachments.items()
+    ]
+    m = MultipartEncoder(fields=fields)
     headers = {
         'AuthenticationToken': WECLAPP_API_KEY,
         'Accept': 'application/json',
         'Content-Type': m.content_type
     }
+    url = f"https://{WECLAPP_TENANT}.weclapp.com/webapp/api/v1/purchaseInvoice/startInvoiceDocumentProcessing/multipartUpload"
     request_with_retries("POST", url, headers=headers, data=m, timeout=60, log_entries=log_entries)
-    uploaded_files = ', '.join(name for name, _, _ in pdf_attachments.values())
+    uploaded_files = ', '.join(filename for filename, _, _ in pdf_attachments.values())
     log_entries.append(f"✅ Upload erfolgreich: {uploaded_files}")
 
 
